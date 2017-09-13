@@ -13,8 +13,22 @@
 #include <memory.h>
 #include <string.h>
 /* You will have to modify the program below */
+#define FRAME_KIND_DATA 1
+#define FRAME_KIND_ACK 0
+#define MAXBUFSIZE 1024
 
-#define MAXBUFSIZE 100
+
+typedef struct packet{
+	char data[1024];
+}Packet;
+
+typedef struct frame{
+	int frame_kind;
+	int seq_no;
+	int ack;
+	Packet packet;
+}FRAME;
+
 
 int main (int argc, char * argv[] )
 {
@@ -25,6 +39,11 @@ int main (int argc, char * argv[] )
 	unsigned int remote_length;         //length of the sockaddr_in structure
 	int nbytes;                        //number of bytes we receive in our message
 	char buffer[MAXBUFSIZE];             //a buffer to store our received message
+	int frame_id = 0;
+	FRAME frame_recv;
+	FRAME frame_send;
+
+
 	if (argc != 2)
 	{
 		printf ("USAGE:  <port>\n");
@@ -59,18 +78,36 @@ int main (int argc, char * argv[] )
 	}
    
 	remote_length = sizeof(remote);
+	while(1)
+	{
+		int rec = recvfrom(sock,&frame_recv,sizeof(frame_recv),0,(struct sockaddr *)&remote, &remote_length);
+		if(rec > 0 && frame_recv.frame_kind == FRAME_KIND_DATA && frame_recv.seq_no == frame_id)
+		{	
+			printf("FRAME Received : %s \n",frame_recv.packet.data);
+		    frame_send.seq_no = 0;
+		    frame_send.frame_kind = FRAME_KIND_ACK;
+		    frame_send.ack =frame_recv.seq_no +1 ;
+		    sendto(sock,&frame_send,sizeof(frame_send),0,(struct sockaddr *)&remote,remote_length);
+		    printf("ACK Sent \n");
+		}
+		else{
+			printf("Frame Not Received \n");
+		} 
+		frame_id++;   
 
-	//waits for an incoming message
-	bzero(buffer,sizeof(buffer));
-	nbytes = recvfrom(sock,buffer,100,0,(struct sockaddr *)&remote, &remote_length);
-	//nbytes = nbytes = **** CALL RECVFROM() HERE ****;
+	}
+    
+	// //waits for an incoming message
+	// bzero(buffer,sizeof(buffer));
+	// nbytes = recvfrom(sock,buffer,100,0,(struct sockaddr *)&remote, &remote_length);
+	// //nbytes = nbytes = **** CALL RECVFROM() HERE ****;
 
-	printf("The client says %s\n", buffer);
+	// printf("The client says %s\n", buffer);
 
-	char msg[] = "orange";
-	nbytes = sendto(sock, "Got your message\n",17,0,(struct sockaddr *)&remote,remote_length);
-	//nbytes = **** CALL SENDTO() HERE ****;
+	// char msg[] = "orange";
+	// nbytes = sendto(sock, "Got your message\n",17,0,(struct sockaddr *)&remote,remote_length);
+	// //nbytes = **** CALL SENDTO() HERE ****;
 
-	close(sock);
+	// close(sock);
 }
 
