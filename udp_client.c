@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <memory.h>
 #include <errno.h>
+#include <file.h>
 #define FRAME_KIND_DATA 1
 #define FRAME_KIND_ACK 0
 #define MAXBUFSIZE 1024
@@ -55,6 +56,17 @@ int main (int argc, char * argv[])
 	remote.sin_port = htons(atoi(argv[2]));      //sets port to network byte order
 	remote.sin_addr.s_addr = inet_addr(argv[1]); //sets remote IP address
     sock = socket(AF_INET, SOCK_DGRAM, 0);
+    printf("getting picture size \n");
+    FILE *picture;
+    picture = fopen(argv[3],"r");
+    int temp_size;
+    fseek(picture, 0, SEEK_END);
+    temp_size = ftell(picture);
+    fseek(picture, 0, SEEK_SET);
+
+    printf("Sending picture size");
+    //Frame Header should contain Size, extension etc..,
+
 	//Causes the system to create a generic socket of type UDP (datagram)
 	//if ((sock = **** CALL SOCKET() HERE TO CREATE A UDP SOCKET ****) < 0)
 	if(sock < 0)

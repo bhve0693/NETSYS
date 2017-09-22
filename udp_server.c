@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <memory.h>
 #include <string.h>
+#include <file.h>
 /* You will have to modify the program below */
 #define FRAME_KIND_DATA 1
 #define FRAME_KIND_ACK 0
