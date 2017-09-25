@@ -28,6 +28,7 @@
 #define FRAME_KIND_ERR_INVR    8
 #define FRAME_KIND_ERR_INVS    9
 #define FRAME_KIND_RES_OK     10
+#define XOR_BYTE            0x9E
 
 typedef struct packet{
   char data[1024];
@@ -41,12 +42,22 @@ typedef struct frame{
   Packet packet;
 }FRAME;
 
+char * xorBuffer(char *buffer, long bufferSize){
+
+    int i;
+    for(i = 0;i <= bufferSize;i++){
+        buffer[i] ^= XOR_BYTE;
+    }
+    return buffer;
+}
+
 void get_file(int sockfd, long length,struct sockaddr_in servaddr, char *buff)
 {
    printf("\n Entering get\n");
   long count = 0;
   int frame_id = 0;
   long temp_size = 0;
+  char *temp_buff = malloc(sizeof(char)*1024);
   FRAME frame_recv;
   FRAME frame_send;
   frame_send.seq_no = 0;
@@ -114,6 +125,8 @@ void get_file(int sockfd, long length,struct sockaddr_in servaddr, char *buff)
         sendto(sockfd,&frame_send,sizeof(frame_send),0,(struct sockaddr *)&servaddr,addr_size);
         printf("ACK Sent \n");
         printf("Packet ID %d \n", frame_id);
+        temp_buff = xorBuffer(frame_recv.packet.data,frame_recv.sizer);
+        memcpy(frame_recv.packet.data,temp_buff, frame_recv.sizer);
         fwrite(&frame_recv.packet.data, 1, frame_recv.sizer, fp);
         //fwrite(&frame_recv.packet.data, frame_recv.sizer,1, fp);
         //strcat(file_buffer,frame_recv.packet.data);

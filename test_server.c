@@ -19,6 +19,7 @@
 #define FRAME_KIND_ERR_INVR    8
 #define FRAME_KIND_ERR_INVS    9
 #define FRAME_KIND_RES_OK     10
+#define XOR_BYTE            0x9E
 
 typedef struct packet{
   char data[1024];
@@ -32,6 +33,16 @@ typedef struct frame{
   Packet packet;
 }FRAME;
 
+char * xorBuffer(char *buffer, long bufferSize){
+
+    int i;
+    for(i = 0;i <= bufferSize;i++){
+        buffer[i] ^= XOR_BYTE;
+    }
+    return buffer;
+}
+
+
 void client_get_file(int sd,struct sockaddr_in cliaddr,int len,FRAME frame_send, FRAME frame_recv)
 {
   char buff[200];
@@ -41,6 +52,7 @@ void client_get_file(int sd,struct sockaddr_in cliaddr,int len,FRAME frame_send,
   int frame_id = 0;
   long read_len = 0;
   long count = 0;
+  char *temp_buff = malloc(sizeof(char)*1024);
   printf("%s\n",buff);
   printf("Frame recvd : %s\n  ", frame_recv.packet.data);
   memcpy(buff,frame_recv.packet.data, frame_recv.sizer);
@@ -88,6 +100,8 @@ void client_get_file(int sd,struct sockaddr_in cliaddr,int len,FRAME frame_send,
           //printf("File Buffer %s", file_buffer);
           //strncpy(frame_send.packet.data,file_buffer,read_len);
           printf("FFrame Buffer %s", frame_send.packet.data);
+          temp_buff = xorBuffer(frame_send.packet.data,read_len);
+          memcpy(frame_send.packet.data ,temp_buff,read_len);
           //strcpy(frame_send.packet.data,file_buffer);
           //long packet_len = strlen(frame_send.packet.data);
           //printf("Packet_Len sent is %ld \n",packet_len);
