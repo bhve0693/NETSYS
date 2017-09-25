@@ -334,7 +334,7 @@ void delete_file(int sockfd, long length,struct sockaddr_in servaddr, char *buff
           (struct sockaddr *)&servaddr, sizeof(struct sockaddr));
 
 }
-int main()
+int main(int argc, char * argv[])
 {
     char buff[2000];
     int sockfd,connfd,len;
@@ -351,6 +351,12 @@ int main()
     FRAME frame_recv;
     FRAME frame_send;
     struct sockaddr_in servaddr,cliaddr;
+    if (argc < 3)
+   {
+      printf("USAGE:  <server_ip> <server_port>\n");
+      exit(1);
+   }
+
     // create socket in client side
     
  /*  FILE *fp;
@@ -402,8 +408,8 @@ printf("Size of Overall Struct %ld\n",j*sizeof(ent->d_name));*/
    }
    bzero(&servaddr, sizeof(servaddr)); 
    servaddr.sin_family = AF_INET;
-   servaddr.sin_addr.s_addr = INADDR_ANY; //inet_addr("128.138.201.66"); // ANY address or use specific address
-   servaddr.sin_port = htons(7803);  // Port address
+   servaddr.sin_addr.s_addr = inet_addr(argv[1]);  //inet_addr("128.138.201.66"); // ANY address or use specific address
+   servaddr.sin_port =    htons(atoi(argv[2]));  // Port address
    printf("\n Enter any of the following commands! \n");
    printf("\n1. get [file_name] \n"); 
    printf("\n2. put [file_name] \n");

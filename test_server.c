@@ -316,7 +316,7 @@ void client_ls_req(int sd,struct sockaddr_in cliaddr)
     fclose(fp); 
 }
 
-int main()
+int main(int argc, char * argv[])
 {
   char buff[200];
   //char file_buffer[140531];
@@ -327,7 +327,11 @@ int main()
   FRAME frame_recv;
   int ack_recv = 1;
   int frame_id = 0;
-
+  if (argc != 2)
+  {
+    printf ("USAGE:  <port>\n");
+    exit(1);
+  }
   sd = socket(AF_INET, SOCK_DGRAM, 0);
  
   if(sd==-1)
@@ -344,7 +348,7 @@ int main()
  
   servaddr.sin_family = AF_INET;
   servaddr.sin_addr.s_addr = INADDR_ANY;
-  servaddr.sin_port = htons(7803);
+  servaddr.sin_port = htons(atoi(argv[1]));
  
   if ( bind(sd, (struct sockaddr *)&servaddr, sizeof(servaddr)) != 0 )
     printf("Not binded\n");
