@@ -14,13 +14,20 @@
 #include <resolv.h>
 #include <netinet/in.h>
 #include <string.h> 
+#include <dirent.h>
 
-#define FRAME_KIND_DATA     1
-#define FRAME_KIND_ACK      0
-#define FRAME_KIND_REQ_GET  2
-#define FRAME_KIND_REQ_PUT  3
-#define FRAME_KIND_REQ_LS   4
-#define FRAME_KIND_REQ_EXIT 5
+
+#define FRAME_KIND_ACK         0
+#define FRAME_KIND_DATA        1
+#define FRAME_KIND_REQ_GET     2
+#define FRAME_KIND_REQ_PUT     3
+#define FRAME_KIND_REQ_LS      4
+#define FRAME_KIND_REQ_DELETE  5
+#define FRAME_KIND_REQ_EXIT    6
+#define FRAME_KIND_ERR_FNF     7
+#define FRAME_KIND_ERR_INVR    8
+#define FRAME_KIND_ERR_INVS    9
+#define FRAME_KIND_RES_OK     10
 
 typedef struct packet{
   char data[1024];
@@ -36,6 +43,7 @@ typedef struct frame{
 
 void get_file(int sockfd, long length,struct sockaddr_in servaddr, char *buff)
 {
+   printf("\n Entering get\n");
   long count = 0;
   int frame_id = 0;
   long temp_size = 0;
@@ -82,7 +90,22 @@ void get_file(int sockfd, long length,struct sockaddr_in servaddr, char *buff)
       //count_2 = count_2 -frame_recv.sizer;
       //printf("Count2_ size other than frame %ld",count_2);
       count += frame_recv.sizer;
-      if(rec > 0 && frame_recv.frame_kind == FRAME_KIND_DATA && frame_recv.seq_no == frame_id)
+      if(frame_recv.frame_kind == FRAME_KIND_ERR_FNF)
+      {
+        printf("\nFile Not Found \n");
+        flag = 0;
+      }
+      else if(frame_recv.frame_kind == FRAME_KIND_ERR_FNF)
+      {
+        printf("\nFile Read Error in Server Side!! \n");
+        flag = 0;
+      }
+      else if(frame_recv.frame_kind == FRAME_KIND_ERR_INVS)
+      {
+        printf("\nFile Send Error in Server Side!! \n");
+        flag = 0;
+      }
+      else if(rec > 0 && frame_recv.frame_kind == FRAME_KIND_DATA && frame_recv.seq_no == frame_id)
       { 
         printf("FRAME Received : %s \n",frame_recv.packet.data);
         frame_send.seq_no = 0;
@@ -135,6 +158,9 @@ void put_file(int sockfd,long length,struct sockaddr_in servaddr, char *buff)
   if(fp==NULL)
     {
       printf("file does not exist\n");
+      frame_send.frame_kind = FRAME_KIND_ERR_FNF;
+      sendto(sockfd, &frame_send, sizeof(frame_send), 0,
+          (struct sockaddr *)&servaddr, sizeof(struct sockaddr));
       exit(1);
     }
   
@@ -155,6 +181,9 @@ void put_file(int sockfd,long length,struct sockaddr_in servaddr, char *buff)
           if(read_len == -1)
           {
             printf("Invalid Read \n");
+            frame_send.frame_kind = FRAME_KIND_ERR_INVR;
+      sendto(sockfd, &frame_send, sizeof(frame_send), 0,
+          (struct sockaddr *)&servaddr, sizeof(struct sockaddr));
             exit(1);
           }
           count += read_len;
@@ -174,6 +203,9 @@ void put_file(int sockfd,long length,struct sockaddr_in servaddr, char *buff)
           if( sent_bytes == -1)
           {
             fprintf(stderr, "error while sending data!\n");
+            frame_send.frame_kind = FRAME_KIND_ERR_INVS;
+      sendto(sockfd, &frame_send, sizeof(frame_send), 0,
+          (struct sockaddr *)&servaddr, sizeof(struct sockaddr));
             exit(-1);
           }
         }
@@ -198,6 +230,110 @@ void put_file(int sockfd,long length,struct sockaddr_in servaddr, char *buff)
     fclose(fp); 
  }
 
+void server_ls(int sockfd,struct sockaddr_in servaddr)
+{
+  char *buff = malloc(sizeof(char)*2000);
+  long count = 0;
+  int frame_id = 0;
+  long temp_size = 0;
+  FRAME frame_recv;
+  FRAME frame_send;
+  frame_send.seq_no = 0;
+  frame_send.frame_kind = FRAME_KIND_REQ_LS;
+  frame_send.ack = 0;
+  frame_send.sizer = 0; 
+  temp_size = sizeof(frame_send) - 1024;
+  printf("Sending ls request \n");
+  sendto(sockfd, &frame_send, sizeof(frame_send), 0,
+          (struct sockaddr *)&servaddr, sizeof(struct sockaddr));
+ // sendto(sockfd, buff, strlen(buff), 0,
+  //        (struct sockaddr *)&servaddr, sizeof(struct sockaddr));
+      //char file_buffer[1000];
+  int addr_size = sizeof(struct sockaddr);
+    //long read_len = recvfrom(sockfd,file_buffer,140531,0,(struct sockaddr *)&servaddr, &addr_size);
+    
+  int nbrecv = 0;   
+  int flag = 1; 
+  char new_file[]="ls.txt";
+   //char file_full_buffer[150000];
+  FILE *fp;
+  fp=fopen(new_file,"wb");
+  long rec = 0;
+  long count_2 = 0;
+  long count_3 = 0;
+//long count = 0;
+
+  while(flag == 1)
+    {
+      //memset(file_buffer, '\0', 1024);
+    
+      if((rec = recvfrom(sockfd,&frame_recv,sizeof(frame_recv),0,(struct sockaddr *)&servaddr, &addr_size)) == -1)
+      {
+          fprintf(stderr, "fail while receiving data! \n");
+          exit(-1);
+      }
+      count_2 += rec; 
+      count_3++;
+      printf("Count2_ full frame %ld",count_2);
+      //count_2 = count_2 -frame_recv.sizer;
+      //printf("Count2_ size other than frame %ld",count_2);
+      count += frame_recv.sizer;
+      if(rec > 0 && frame_recv.frame_kind == FRAME_KIND_DATA && frame_recv.seq_no == frame_id)
+      { 
+        printf("FRAME Received : %s \n",frame_recv.packet.data);
+        frame_send.seq_no = 0;
+        frame_send.frame_kind = FRAME_KIND_ACK;
+        frame_send.ack =frame_recv.seq_no +1 ;
+        sendto(sockfd,&frame_send,sizeof(frame_send),0,(struct sockaddr *)&servaddr,addr_size);
+        printf("ACK Sent \n");
+        printf("Packet ID %d \n", frame_id);
+        fwrite(&frame_recv.packet.data, 1, frame_recv.sizer, fp);
+        //fwrite(&frame_recv.packet.data, frame_recv.sizer,1, fp);
+        //strcat(file_buffer,frame_recv.packet.data);
+      }
+      else{
+        printf("Frame Not Received \n");
+      } 
+      frame_id++;  
+
+      if(frame_recv.sizer <1024)
+      {
+        flag =0;
+      } 
+
+    }
+    count_2 = count_2 - (count_3*24);
+    printf("Size of Count_2 %ld",count_2);
+    printf("Size of receive file %ld bytes",count);
+    fclose(fp);
+    fp=fopen(new_file,"rb");
+    printf("\nOutput of LS in server is \n");
+    while(!feof(fp))
+    {
+       fread(buff,1,1024, fp);
+       printf("\n %s \n",buff);
+    }
+    fclose(fp);
+
+}
+
+void delete_file(int sockfd, long length,struct sockaddr_in servaddr, char *buff)
+{
+  long count = 0;
+  int frame_id = 0;
+  long temp_size = 0;
+  FRAME frame_recv;
+  FRAME frame_send;
+  frame_send.seq_no = 0;
+  frame_send.frame_kind = FRAME_KIND_REQ_DELETE;
+  frame_send.ack = 0;
+  frame_send.sizer = length; 
+  temp_size = sizeof(frame_send) - (1024-length);
+  memcpy(frame_send.packet.data,buff,length); 
+  sendto(sockfd, &frame_send, sizeof(frame_send), 0,
+          (struct sockaddr *)&servaddr, sizeof(struct sockaddr));
+
+}
 int main()
 {
     char buff[2000];
@@ -205,12 +341,55 @@ int main()
     long count = 0;
     int frame_id = 0;
     char cmd_buff[200];
+    int addr_size = sizeof(struct sockaddr);
+    long rec = 0;
+    DIR *dir;
+    struct dirent *ent;
+    char *name_buff = malloc(sizeof(ent->d_name)*2000);
     char *split = malloc(sizeof(char)*200);
     char *ref_input = malloc(sizeof(char)*200);;
     FRAME frame_recv;
     FRAME frame_send;
     struct sockaddr_in servaddr,cliaddr;
     // create socket in client side
+    
+ /*  FILE *fp;
+   fp=fopen(ls_file,"wb");
+    if ((dir = opendir ("./")) != NULL) {
+    while ((ent = readdir (dir)) != NULL) {
+      printf ("%s\n", ent->d_name);
+
+      fwrite(ent->d_name, 1, strlen(ent->d_name), fp);
+      char temp[] = "\n";
+      fwrite(temp,1,sizeof(temp)-1,fp);
+
+      memcpy(name_buff+(k*sizeof(ent->d_name)), ent->d_name, sizeof(ent->d_name));
+      k++;
+    }
+    closedir (dir);
+    } else {
+  perror ("");
+  exit(1);
+}
+fclose(fp);
+fp=fopen(ls_file,"rb");
+while(!feof(fp))
+{
+  fread(buff,1,1024, fp);
+  printf("Output of LS is %s \n",buff);
+}
+fclose(fp);
+
+int j = k;*/
+/*while(k)
+{  
+printf("Listing %s\n",name_buff+((j-k)*sizeof(ent->d_name)));
+k--;
+}
+printf("Size of Overall Struct %ld\n",j*sizeof(ent->d_name));*/
+
+//exit(1);
+
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if(sockfd==-1)
     {
@@ -224,8 +403,8 @@ int main()
    bzero(&servaddr, sizeof(servaddr)); 
    servaddr.sin_family = AF_INET;
    servaddr.sin_addr.s_addr = INADDR_ANY; //inet_addr("128.138.201.66"); // ANY address or use specific address
-   servaddr.sin_port = htons(7884);  // Port address
-   printf("\n Enter the any of the following commands! \n");
+   servaddr.sin_port = htons(7803);  // Port address
+   printf("\n Enter any of the following commands! \n");
    printf("\n1. get [file_name] \n"); 
    printf("\n2. put [file_name] \n");
    printf("\n3. delete [file_name] \n");
@@ -265,11 +444,36 @@ int main()
    else if(!(strcmp(ref_input,"ls")))
    {
         printf("List  %s", ref_input);  
+        server_ls(sockfd,servaddr);
+   }
+   else if(!(strcmp(split,"delete")))
+   {
+       split = strtok(NULL, " ");
+       printf("Split String after delimiter %s", split);
+       memcpy(buff,split,strlen(split)-1);
+       printf("\n length %ld \n",strlen(buff));
+       long length  = strlen(buff);
+       delete_file(sockfd,length,servaddr,buff);
+        if((rec = recvfrom(sockfd,&frame_recv,sizeof(frame_recv),0,(struct sockaddr *)&servaddr, &addr_size)) == -1)
+       {
+          fprintf(stderr, "fail while receiving data! \n");
+          exit(-1);
+       }
+       if( frame_recv.frame_kind == FRAME_KIND_ERR_FNF)
+       {
+          printf("\nFile Not found in server to be deleted!! \n");
+       }
+       if(frame_recv.frame_kind == FRAME_KIND_RES_OK)
+       {
+          printf("\nFile Successfully deleted in Server! \n");
+       }
+      // get_file(sockfd,length,servaddr,buff);
    }
    else
    {
         printf("\nInvalid Command! Exiting UDP Tranfers!! \n"); 
    }
+
        // printf("UDP File name message\n");
     //printf("\n length %ld \n",strlen(buff));
     //scanf("%s",buff);
