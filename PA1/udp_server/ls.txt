@@ -1,0 +1,10 @@
+foo1.txt
+..
+ls.txt
+udp_server.o
+Makefile
+server
+udp_server.c
+.
+foo3.pdf
+foo2
