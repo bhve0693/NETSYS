@@ -107,9 +107,7 @@ void start_server(int port)
 	printf("Socket created\n");
 	if ((bind(sock, (struct sockaddr *)&sin, sizeof(sin)))	 < 0)		//bind socket and check if error occurs
 	{
-		printf("%d\n", bind(sock, (struct sockaddr *)&sin, sizeof(sin)));
-		//	printf("Error in binding socket\n");
-		perror("Bind error: ");
+		printf("Bind Error : %d\n", bind(sock, (struct sockaddr *)&sin, sizeof(sin)));
 		exit(1);
 	}
 	printf("Socket bound\n");	
