@@ -30,6 +30,9 @@
 
 char *DIR_ROOT = NULL;
 char PORT_NUM[8];
+int sock = 0;
+int clients[MAX_CONN];
+
 static uint32_t get_sizeof_file (FILE * fileDesc)
 {
     uint32_t size;
@@ -82,14 +85,55 @@ void wsconf_read()
 
             }
 
-
         }
 
         fclose(fp);
 	}
 }
+void start_server(int port)
+{
+	struct sockaddr_in sin;
+	bzero((char *)&sin, sizeof(sin));
+	sin.sin_family = AF_INET;							//set family as the internet family (AF_INET)
+	sin.sin_addr.s_addr = INADDR_ANY;					//set any address as the address for the socket
+	sin.sin_port = htons(port);							//set the port number to the socket
+	if((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)	//open socket  and check if error occurs
+	{
+		printf("Error in creating socket \n");
+		exit(1);
+	}
+	int optval = 1;
+  	setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const void *)&optval , sizeof(int));		//prevents the "already in use" issue
+	printf("Socket created\n");
+	if ((bind(sock, (struct sockaddr *)&sin, sizeof(sin)))	 < 0)		//bind socket and check if error occurs
+	{
+		printf("%d\n", bind(sock, (struct sockaddr *)&sin, sizeof(sin)));
+		//	printf("Error in binding socket\n");
+		perror("Bind error: ");
+		exit(1);
+	}
+	printf("Socket bound\n");	
+	if(listen(sock, 4) != 0)							//listen for incoming requests on the socket we have created
+	{
+		printf("Error in listen\n");
+		exit(1);
+	}
+	printf("Listening for connections\n");	
+}
 
 int main(int argc, char *argv[])
 {
+	int conn_count = 0;
 	wsconf_read();
+    for(int i= 0; i<MAX_CONN; i++)
+    {
+    	clients[i] = -1; //Setting all socket values as -1 
+    }
+    int port = atoi(PORT_NUM);
+    if(port < 1024)
+    {
+    	printf("\n Chosen Port is invalid (Occupied by system defaults) \n");
+    	exit(1);
+    }
+    start_server(port);
 }
