@@ -23,6 +23,7 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <sys/time.h>
+#include <signal.h>
 
 #define MAX_CONN 100
 #define MAX_WSBUFF 1000
@@ -32,6 +33,24 @@ char *DIR_ROOT = NULL;
 char PORT_NUM[8];
 int sock = 0;
 int clients[MAX_CONN];
+
+
+void signal_handler(int signal)
+{
+	switch (signal)
+	{
+		case SIGINT:
+				close(sock);
+				exit(1);
+				break;
+		case SIGTERM:
+				close(sock);
+				exit(1);
+				break;
+
+	}
+}
+
 
 static uint32_t get_sizeof_file (FILE * fileDesc)
 {
@@ -119,10 +138,39 @@ void start_server(int port)
 	printf("Listening for connections\n");	
 }
 
+
+void conn_response(int conn_count)
+{
+	printf("\nEntering Conn Response \n");
+}
+
 int main(int argc, char *argv[])
 {
 	int conn_count = 0;
+	struct sockaddr_in clientAddr;
+    socklen_t addrlen;
+    struct sigaction custom_signal;
+
+    custom_signal.sa_handler = signal_handler;
+
+    if(sigfillset(&custom_signal.sa_mask) == -1)
+    {
+    	printf("\nERR:Signal Mask Setting Failed!\n");
+		return 1;
+	}
+
+	if(sigaction(SIGINT, &custom_signal, NULL) == -1)
+    {
+    	printf("\nERR:Cannot Handle SIGINT!\n");
+    	return 1;
+    }
+	if(sigaction(SIGTERM, &custom_signal, NULL) == -1)
+    {
+    	printf("\nERR:Cannot Handle SIGTERM!\n");
+    	return 1;
+	}
 	wsconf_read();
+
     for(int i= 0; i<MAX_CONN; i++)
     {
     	clients[i] = -1; //Setting all socket values as -1 
@@ -134,4 +182,28 @@ int main(int argc, char *argv[])
     	exit(1);
     }
     start_server(port);
+
+    while(1)
+    {
+    	addrlen = sizeof(clientAddr);
+        clients[conn_count] = accept (sock, (struct sockaddr *) &clientAddr, &addrlen);
+        printf("%d\n",clients[conn_count]);
+        if(clients[conn_count] < 0)
+        {
+        	printf("\n Error in Connection Accept! \n");
+        }
+        else
+        {
+        	if(!fork())
+        	{
+        		conn_response(conn_count);
+        	}
+
+        	while (clients[conn_count]!=-1) 
+            {
+                conn_count = (conn_count+1)%MAX_CONN;
+            }
+        }
+
+    }
 }
