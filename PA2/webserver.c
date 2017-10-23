@@ -453,7 +453,7 @@ void conn_response(int n)
 
                         while ( (bytes_read=read(fd, msg_to_client, TX_BYTES))>0 )
                             write (clients[n], msg_to_client, bytes_read);
-                        printf("\n Loaded Index.html\n Waiting here \n");
+                        printf("\n Loaded Index.html \n");
 
                         fclose(fp);
                         bzero(msg_post,sizeof(msg_post));
@@ -590,7 +590,7 @@ int main(int argc, char *argv[])
     }
     start_server(port);
 
-    while(1)
+    while(1) // Server Running forever 
     {
     	addrlen = sizeof(clientAddr);
         clients[conn_count] = accept (sock, (struct sockaddr *) &clientAddr, &addrlen);
