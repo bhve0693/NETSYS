@@ -25,6 +25,8 @@
 #include <sys/time.h>
 #include <signal.h>
 
+/***** MACROS *******/
+
 #define MAX_CONN         100
 #define MAX_WSBUFF 	     1000
 #define TX_BYTES		 1024
@@ -34,12 +36,17 @@
 #define STATUSLENGTH     2000
 
 
+/**** Global Variables ****/
+
 char *DIR_ROOT = NULL;
 char PORT_NUM[8];
 int sock = 0;
 int clients[MAX_CONN];
 int COUNT = 0;
-int globalClientNumber = 0;
+int client_count = 0;
+int internal_error = 0;
+
+/*******Function Implementations***********/
 
 void signal_handler(int signal)
 {
@@ -169,6 +176,11 @@ void wsconf_read()
                 temp_buff=strtok(wsbuff," \t\n");
                 temp_buff = strtok(NULL, " \t\n");
                 DIR_ROOT=(char*)malloc(100);
+                if(!DIR_ROOT)
+                {
+                	internal_error = 1;  // Internal Error for HTTP 500 Error Handling
+                	break;
+                }
                 strcpy(DIR_ROOT,temp_buff);
                 printf("ROOT DIRECTORY : %s\n",DIR_ROOT);
                 bzero(wsbuff, sizeof(wsbuff));
@@ -218,13 +230,13 @@ void conn_response(int n)
     FILE *fp;
     char status[STATUSLENGTH];
     char connection_status[50];
-    globalClientNumber = n;
-    int post_req_check=0;
+    client_count = n;
+    int flag_post=0;
 
-	printf("\n _________________________________\nglobalClientNumber : %d\n",globalClientNumber);
+	printf("\n _________________________________\nclient_count : %d\n",client_count);
 	while(1){
 
-	post_req_check = 0;  // make it zero before every post request
+	flag_post = 0;  // make it zero before every post request
 	bzero(status, sizeof(status));
     bzero(msg_from_client, sizeof(msg_from_client));
     bzero(path, sizeof(path));
@@ -238,7 +250,6 @@ void conn_response(int n)
 
 	char filename[50] = "Msgstore";
     char count_str[50];
-    char line_copy[99999];
     sprintf(count_str,"%d", COUNT);
     strcat(filename, count_str);
     FILE *fp_storeMsg = fopen(filename, "w");
@@ -284,8 +295,8 @@ void conn_response(int n)
         {
         	if (strncmp(req_string[0], "POST\0", 5)==0)
         	{
-        		printf("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&Com\n");
-        		post_req_check = TRUE;
+        		printf("____________________________________________\n");
+        		flag_post = TRUE;
         	}
 
             req_string[1] = strtok (NULL, " \t");
@@ -297,7 +308,20 @@ void conn_response(int n)
                 strcpy(http_version, "HTTP/1.1");
             else
                 strcpy(http_version, "HTTP/1.0");
+            if(internal_error)
+            {
+            	strncat(status,http_version,strlen(http_version));
+                strncat(status," 500 Internal Server Error:Cannot allocate memory",strlen(" 500 Internal Server Error"));
+                strncat(status,"\n",strlen("\n"));
+                strncat(status,"<html><body>>500 Internal Server Error:Cannot allocate memory",strlen("<body>>400 Bad Request Reason: Invalid HTTP-Version :"));
+                strncat(status,"HTTP",strlen("HTTP"));
+                strncat(status,"</body></html>",strlen("</body></html>"));
+                strncat(status,"\r\n",strlen("\r\n"));
+                printf("%s\n",status);
+               	write(clients[n], status, strlen(status));
+               	internal_error = 0;
 
+            }
 
             if ( strncmp( req_string[2], "HTTP/1.0", 8)!=0 && strncmp( req_string[2], "HTTP/1.1", 8)!=0 )
             {
@@ -306,22 +330,186 @@ void conn_response(int n)
                 strncat(status,http_version,strlen(http_version));
                 strncat(status," 400 Bad Request",strlen(" 400 Bad Request"));
                 strncat(status,"\n",strlen("\n"));
-                strncat(status,"Content-Type:",strlen("Content-type:"));
-                strncat(status,"NONE",strlen("NONE"));
-                strncat(status,"\n",strlen("\n"));
-                strncat(status,"Content-Length:",strlen("Content-Length:"));
-                strncat(status,"NONE",strlen("NONE"));
-                strncat(status,"\n",strlen("\n"));
-	            strncat(status,connection_status,strlen(connection_status));
-                strncat(status,"\r\n",strlen("\r\n"));
-                strncat(status,"\r\n",strlen("\r\n"));
-                strncat(status,"<HEAD><TITLE>400 Bad Request Reason</TITLE></HEAD>",strlen("<HEAD><TITLE>400 Bad Request Reason</TITLE></HEAD>"));
-                strncat(status,"<html><BODY>>400 Bad Request Reason: Invalid HTTP-Version :",strlen("<BODY>>400 Bad Request Reason: Invalid HTTP-Version :"));
+                strncat(status,"<html><body>>400 Bad Request Reason: Invalid HTTP-Version :",strlen("<body>>400 Bad Request Reason: Invalid HTTP-Version :"));
                 strncat(status,"HTTP",strlen("HTTP"));
-                strncat(status,"</BODY></html>",strlen("</BODY></html>"));
+                strncat(status,"</body></html>",strlen("</body></html>"));
                 strncat(status,"\r\n",strlen("\r\n"));
                 printf("%s\n",status);
                	write(clients[n], status, strlen(status));
+            }
+            else
+            {
+                if ( strncmp(req_string[1], "/\0", 2)==0 )
+                    req_string[1] = "/index.html";        //Because if no file is specified, index.html will be opened by default (like it happens in APACHE...
+
+                strcpy(path, DIR_ROOT);
+                strcpy(&path[strlen(DIR_ROOT)], req_string[1]);
+                printf("file: %s\n", path);
+
+                int formatCheck;
+                char *ext = strrchr (path, '.');
+                if (ext == NULL)
+                {
+                    formatCheck = FALSE;
+                }
+                else
+                {
+                    formatCheck = format_extract(ext);
+                }
+                
+                
+                char size_array[20];
+
+                
+                if (formatCheck == TRUE)
+                {
+                    if ( (fd=open(path, O_RDONLY))!=-1 )    //FILE FOUND
+                    {
+                        fp = fopen(path,"r");;
+                        char *checkfileType = content_check(ext);
+                        int size= get_sizeof_file(fp);
+                        sprintf(size_array,"%d",size);
+                        
+                        char msg_post[CLIENT_MSGSIZE];
+                        if (flag_post)
+                        {
+                        	COUNT++;
+                        	printf("coming into post loop\n");
+                        	FILE * fp_msgcheck;
+						    char * line = NULL;
+						    size_t len = 0;
+						    ssize_t read;
+						    int line_empty = FALSE;
+						    fp_msgcheck = fopen(filename, "r");
+						    if (fp_msgcheck == NULL)
+						        exit(EXIT_FAILURE);
+
+						    int temp_var = 1;
+
+						    while ((read = getline(&line, &len, fp_msgcheck)) != -1) {
+						    
+						    	if (read == 2 && line_empty == FALSE)
+						    	{
+						    		line_empty = TRUE;
+
+						    	}
+
+						   		if (line_empty == TRUE)
+						    	{
+						    		printf("			Retrieved line of length %zu :\n", read);
+						        	printf("			%s", line);
+						        	if (temp_var == 1)
+						        	{
+						        		
+						        		temp_var = 0;
+						        	}
+						        	else
+						        	{
+						        		
+						    			strncat(msg_post, line, strlen(line));
+						    			printf("Coming here!!%s\n", msg_post);
+						    		}
+						    		
+						    	}
+
+						    }
+						    printf("						%s\n", msg_post);	
+						    temp_var = 1;
+						    line_empty = FALSE;
+						    fclose(fp_msgcheck);
+						    remove(filename);
+						    if (line)
+						        free(line);
+                        }
+
+                        char msg[CLIENT_MSGSIZE];
+                        if (flag_post)
+                        {
+                        	strncat(status,"POST ",strlen("POST "));	
+                        }
+                        strncat(status,http_version,strlen(http_version));
+                        strncat(status," 200 OK",strlen(" 200 OK"));
+                        strncat(status,"\n",strlen("\n"));
+                        strncat(status,"Content-Type:",strlen("Content-type:"));
+                        strncat(status,checkfileType,strlen(checkfileType));
+                        strncat(status,"\n",strlen("\n"));
+                        strncat(status,"Content-Length:",strlen("Content-Length:"));
+                        strncat(status,size_array,strlen(size_array));
+                        strncat(status,"\n",strlen("\n"));
+                        strncat(status,connection_status,strlen(connection_status));
+                        if (flag_post)
+                        {
+	                        strncat(status,"\r\n\r\n",strlen("\r\n\r\n"));
+	                        sprintf(msg,"<h1>POST DATA</h1><html><body>%s</body></html>\n",msg_post);
+	                        strncat(status, msg, strlen(msg));
+	                        strncat(status,"\r\n",strlen("\r\n"));
+	                    }
+	                    else{
+	                        strncat(status,"\r\n",strlen("\r\n"));
+	                        strncat(status,"\r\n",strlen("\r\n"));
+	                    }
+                        printf("printing status update to client %s\n",status);
+                        send(clients[n], status, strlen(status), 0);
+
+                        while ( (bytes_read=read(fd, msg_to_client, TX_BYTES))>0 )
+                            write (clients[n], msg_to_client, bytes_read);
+                        printf("\n Loaded Index.html\n Waiting here \n");
+
+                        fclose(fp);
+                        bzero(msg_post,sizeof(msg_post));
+                        bzero(msg,sizeof(msg));
+                    }
+                
+                    else{  // file not found loop
+
+                    	strncat(status,http_version,strlen(http_version));
+                        strncat(status," 404 Not Found",strlen(" 404 Not Found"));
+                        strncat(status,"\n",strlen("\n"));
+                        strncat(status,"Content-Type:",strlen("Content-type:"));
+                        strncat(status,"Invalid",strlen("Invalid"));
+                        strncat(status,"\n",strlen("\n"));
+                        strncat(status,"Content-Length:",strlen("Content-Length:"));
+                        strncat(status,"Invalid",strlen("Invalid"));
+	                	strncat(status,"\n",strlen("\n"));
+		            	strncat(status,connection_status,strlen(connection_status));                     
+                        strncat(status,"\r\n",strlen("\r\n"));
+                        strncat(status,"\r\n",strlen("\r\n"));
+                        strncat(status,"<html><body>404 Not Found: URL does not exist:",strlen("<body>404 Not Found: URL does not exist:"));
+                        strncat(status,path,strlen(path));
+                        strncat(status,"</body></html>",strlen("</body></html>"));
+                        strncat(status,"\r\n",strlen("\r\n"));
+                        printf("%s\n",status);
+                        write(clients[n], status, strlen(status)); //FILE NOT FOUND
+                            
+                    }    
+                        
+                }
+
+                else // file not supported
+                {
+                	printf("***************************************************\n");
+                	strncat(status,http_version,strlen(http_version));
+                    strncat(status," 501 Not Implemented",strlen(" 501 Not Implemented"));
+                    strncat(status,"\n",strlen("\n"));//strncat(status_line,"\r\n",strlen("\r\n"));
+                    strncat(status,"Content-Type:",strlen("Content-type:"));
+                    strncat(status,"NONE",strlen("NONE"));
+                    strncat(status,"\n",strlen("\n"));
+                    strncat(status,"Content-Length:",strlen("Content-Length:"));
+                    strncat(status,"NONE",strlen("NONE"));
+                	strncat(status,"\n",strlen("\n"));
+	            	strncat(status,connection_status,strlen(connection_status));                    
+                    strncat(status,"\r\n",strlen("\r\n"));
+                    strncat(status,"\r\n",strlen("\r\n"));
+                    strncat(status,"<HEAD><TITLE>501 Not Implemented</TITLE></HEAD>",strlen("<HEAD><TITLE>501 Not Implemented</TITLE></HEAD>"));
+               
+                    strncat(status,"<body>501 Not Implemented: File format not supported:",strlen("<body>501 Not Implemented: File format not supported:"));
+                    strncat(status,http_version,strlen(http_version));
+                    strncat(status,"</body></html>",strlen("</body></html>"));
+                   
+                    strncat(status,"\r\n",strlen("\r\n"));
+                    write(clients[n], status, strlen(status)); //FILE NOT FOUND   
+                }
+
             }
             
 
@@ -331,7 +519,7 @@ void conn_response(int n)
             {//file not found
 
                 strncat(status,"HTTP/1.1",strlen("HTTP/1.1"));
-                strncat(status,"\n",strlen("\n"));//strncat(status_line,"\r\n",strlen("\r\n"));
+                strncat(status,"\n",strlen("\n"));
                 strncat(status,"Content-Type:",strlen("Content-type:"));
                 strncat(status,"NONE",strlen("NONE"));
                 strncat(status,"\n",strlen("\n"));
@@ -340,9 +528,9 @@ void conn_response(int n)
                 strncat(status,"\r\n",strlen("\r\n"));
                 strncat(status,"\r\n",strlen("\r\n"));
                 strncat(status,"<HEAD><TITLE>501 Not Implemented</TITLE></HEAD>",strlen("<HEAD><TITLE>501 Not Implemented</TITLE></HEAD>"));
-                strncat(status,"<BODY>501 Not Implemented: File format not supported:",strlen("<BODY>501 Not Implemented: File format not supported:"));
+                strncat(status,"<body>501 Not Implemented: File format not supported:",strlen("<body>501 Not Implemented: File format not supported:"));
                 strncat(status,"HTTP/1.1",strlen("HTTP/1.1"));
-                strncat(status,"</BODY></html>",strlen("</BODY></html>"));
+                strncat(status,"</body></html>",strlen("</body></html>"));
                 strncat(status,"\r\n",strlen("\r\n"));
                 write(clients[n], status, strlen(status));   
              }
